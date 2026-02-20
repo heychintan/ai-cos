@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-const API = "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const SERVICES = [
   { key: "anthropic", label: "Anthropic (Claude)", placeholder: "sk-ant-..." },
