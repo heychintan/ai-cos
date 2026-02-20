@@ -109,7 +109,11 @@ with st.sidebar:
     sb_webflow = st.text_input("Webflow API Key", type="password")
     sb_webflow_collection = st.text_input(
         "Webflow Collection ID",
-        placeholder="Optional — auto-discovers if blank",
+        placeholder="e.g. 65ea02e3…",
+    )
+    sb_webflow_domain = st.text_input(
+        "Webflow Site Domain",
+        placeholder="e.g. cosn.community",
     )
 
     st.markdown("### ⚡ Model")
@@ -153,6 +157,9 @@ spotify_secret = _env_or_session("SPOTIFY_CLIENT_SECRET", "cfg_spotify_secret", 
 webflow_key = _env_or_session("WEBFLOW_API_KEY", "cfg_webflow_key", sb_webflow)
 webflow_collection = _env_or_session(
     "WEBFLOW_COLLECTION_ID", "cfg_webflow_collection", sb_webflow_collection
+)
+webflow_domain = _env_or_session(
+    "WEBFLOW_SITE_DOMAIN", "cfg_webflow_domain", sb_webflow_domain
 )
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -259,7 +266,7 @@ if run_clicked:
         if spotify_enabled:
             tasks["spotify"] = fetch_spotify_episodes(spotify_id, spotify_secret, spotify_days)
         if webflow_enabled:
-            tasks["webflow"] = fetch_webflow_jobs(webflow_key, webflow_collection)
+            tasks["webflow"] = fetch_webflow_jobs(webflow_key, webflow_collection, webflow_domain)
 
         results = {}
         if tasks:

@@ -3,36 +3,33 @@ import httpx
 from datetime import datetime, timezone, timedelta
 
 CALENDAR_ID = "cal-9Z75SHNwmRJPyWb"
-BASE_URL = "https://api.lu.ma/v1/calendar/list-events"
+BASE_URL = "https://public-api.luma.com/v1/calendar/list-events"
 
 
 async def fetch_luma_events(api_key: str, days: int = 21) -> list[dict]:
     """Fetch upcoming events from the CoSN Luma calendar."""
-    headers = {"x-luma-api-key": api_key}
-    params = {"calendar_api_id": CALENDAR_ID}
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(BASE_URL, headers=headers, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-
     now = datetime.now(timezone.utc)
     cutoff = now + timedelta(days=days)
 
-    events: list[dict] = []
-    for entry in data.get("entries", []):
-        event = entry.get("event", {})
-        start_at = event.get("start_at", "")
-        if start_at:
-            try:
-                start_dt = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
-                if now <= start_dt <= cutoff:
-                    events.append(event)
-            except ValueError:
-                pass
+    params = {
+        "after": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "before": cutoff.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "sort_column": "start_at",
+        "sort_direction": "asc",
+        "pagination_limit": 10,
+    }
 
-    events.sort(key=lambda e: e.get("start_at", ""))
-    return events[:10]
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            BASE_URL,
+            headers={"accept": "application/json", "x-luma-api-key": api_key},
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    events = [entry.get("event", {}) for entry in data.get("entries", [])]
+    return events
 
 
 def normalize_luma(events: list[dict], days: int = 21) -> str:

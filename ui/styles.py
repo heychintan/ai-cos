@@ -17,15 +17,34 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] {
     background: #F6F9FC;
     border-right: 1px solid #E3E8EF;
+    color: #0A2540 !important;
+}
+[data-testid="stSidebar"] * {
+    color: #0A2540 !important;
+}
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stCheckbox > label,
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stSlider label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stFileUploader label,
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span {
+    color: #0A2540 !important;
 }
 [data-testid="stSidebar"] .stMarkdown h3 {
-    color: #0A2540;
+    color: #0A2540 !important;
     font-size: 0.78rem;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     margin-top: 1.2rem;
     margin-bottom: 0.4rem;
+}
+[data-testid="stSidebar"] .stTextInput > div > div > input,
+[data-testid="stSidebar"] .stSelectbox > div > div > div {
+    color: #0A2540 !important;
+    background: #FFFFFF !important;
 }
 
 /* Primary button — Stripe indigo */

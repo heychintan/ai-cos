@@ -69,7 +69,8 @@ async def fetch_webflow_jobs(
     Fetch published job postings from Webflow CMS.
     Returns (items, site_domain).
 
-    If collection_id is empty, auto-discovers it.
+    Requires collection_id. site_domain is used for building Apply URLs.
+    Falls back to auto-discovery only if collection_id is not provided.
     """
     if not collection_id:
         _, site_domain, collection_id = await discover_jobs_collection(api_key)
