@@ -19,9 +19,16 @@ from output.docx_writer import write_docx
 
 app = FastAPI(title="CoSN Agent Dashboard API")
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://*.vercel.app",
+    os.getenv("FRONTEND_URL", ""),
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[o for o in ALLOWED_ORIGINS if o],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
