@@ -37,6 +37,23 @@ def stream_generation(
         yield from stream.text_stream
 
 
+def generate_text(
+    api_key: str,
+    context: str,
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 4096,
+) -> str:
+    """Non-streaming generation — used by background task runner."""
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": context}],
+    )
+    return message.content[0].text
+
+
 AVAILABLE_MODELS = [
     "claude-sonnet-4-6",
     "claude-opus-4-6",

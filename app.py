@@ -1,10 +1,10 @@
 """
-CoSN Agent Orchestration Dashboard — Main page.
-Streamlit POC v0.2 | February 2026
+CoSN Agent Orchestration Dashboard
+Streamlit POC v0.3 — Agentic task orchestration with in-session scheduling
 """
-import asyncio
+from __future__ import annotations
+
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -16,333 +16,241 @@ except ImportError:
     pass
 
 st.set_page_config(
-    page_title="CoSN Agent Dashboard",
-    page_icon="🏠",
-    layout="centered",
+    page_title="CoSN Agent",
+    page_icon="⚡",
+    layout="wide",
     initial_sidebar_state="expanded",
 )
 
 from ui.styles import inject_styles
-from ui.components import render_step_indicator
-from agent.sources.luma import fetch_luma_events, normalize_luma
-from agent.sources.spotify import fetch_spotify_episodes, normalize_spotify
-from agent.sources.webflow import fetch_webflow_jobs, normalize_webflow_jobs
-from agent.files import extract_all, extract_text
-from agent.context import assemble_context
-from agent.claude import stream_generation, AVAILABLE_MODELS
-from agent.output import generate_docx
+from agent.task import new_task, schedule_next, fmt_interval, fmt_dt, INTERVAL_PRESETS
+from agent.runner import submit_task
+from agent.claude import AVAILABLE_MODELS
+from scheduler import scheduler_fragment
 
 inject_styles()
 
 # ── Session state ─────────────────────────────────────────────────────────────
-_DEFAULTS = {
-    "run_status": "idle",
-    "last_output": "",
-    "last_docx": None,
-    "last_model": AVAILABLE_MODELS[0],
-    "run_history": [],
-    "run_error": "",
-    "source_status": {"luma": "idle", "spotify": "idle", "webflow": "idle"},
-    "normalized": {"luma": "", "spotify": "", "webflow": ""},
-}
-for k, v in _DEFAULTS.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+if "tasks" not in st.session_state:
+    st.session_state["tasks"] = []
 
 
-def _env_or_session(env_var: str, session_key: str, sidebar_val: str) -> str:
+def _env(var: str, session_key: str, sidebar_val: str = "") -> str:
     if sidebar_val.strip():
         return sidebar_val.strip()
     cfg = st.session_state.get(session_key, "")
     if cfg:
         return cfg
     try:
-        return st.secrets.get(env_var, os.getenv(env_var, ""))
+        return st.secrets.get(var, os.getenv(var, ""))
     except Exception:
-        return os.getenv(env_var, "")
+        return os.getenv(var, "")
 
 
-def _run_async(coro):
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(asyncio.run, coro).result()
-
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar — API keys ────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("API Keys")
-    st.caption("Keys set in .env are loaded automatically.")
-    sb_anthropic      = st.text_input("Anthropic Key", type="password", placeholder="sk-ant-…")
-    sb_luma           = st.text_input("Luma API Key", type="password")
-    sb_spotify_id     = st.text_input("Spotify Client ID", type="password")
-    sb_spotify_secret = st.text_input("Spotify Client Secret", type="password")
-    sb_webflow        = st.text_input("Webflow API Key", type="password")
+    st.caption("Loaded from `.env` automatically.")
+    sb_anthropic          = st.text_input("Anthropic Key",        type="password", placeholder="sk-ant-…")
+    sb_luma               = st.text_input("Luma API Key",         type="password")
+    sb_spotify_id         = st.text_input("Spotify Client ID",    type="password")
+    sb_spotify_secret     = st.text_input("Spotify Client Secret",type="password")
+    sb_webflow            = st.text_input("Webflow API Key",      type="password")
     sb_webflow_collection = st.text_input("Webflow Collection ID")
-    sb_webflow_domain     = st.text_input("Webflow Site Domain", placeholder="e.g. cosn.community")
+    sb_webflow_domain     = st.text_input("Webflow Site Domain",  placeholder="e.g. cosn.community")
+
+api_config = {
+    "anthropic_key":      _env("ANTHROPIC_API_KEY",      "cfg_anthropic_key",      sb_anthropic),
+    "luma_key":           _env("LUMA_API_KEY",           "cfg_luma_key",           sb_luma),
+    "spotify_id":         _env("SPOTIFY_CLIENT_ID",      "cfg_spotify_id",         sb_spotify_id),
+    "spotify_secret":     _env("SPOTIFY_CLIENT_SECRET",  "cfg_spotify_secret",     sb_spotify_secret),
+    "webflow_key":        _env("WEBFLOW_API_KEY",        "cfg_webflow_key",        sb_webflow),
+    "webflow_collection": _env("WEBFLOW_COLLECTION_ID",  "cfg_webflow_collection", sb_webflow_collection),
+    "webflow_domain":     _env("WEBFLOW_SITE_DOMAIN",    "cfg_webflow_domain",     sb_webflow_domain),
+}
+# Always keep api_config fresh for the scheduler fragment
+st.session_state["api_config"] = api_config
+
+
+# ── New Task dialog ───────────────────────────────────────────────────────────
+@st.dialog("New Task", width="large")
+def create_task_dialog() -> None:
+    name         = st.text_input("Task name *", placeholder="Weekly Newsletter")
+    instructions = st.text_area(
+        "Instructions",
+        placeholder="e.g. Focus on SF and NYC events. Lead with the podcast episode. Keep job listings concise.",
+        height=90,
+    )
 
     st.divider()
-    st.header("Model")
-    selected_model = st.selectbox("Claude model", AVAILABLE_MODELS)
+    col_src, col_sched = st.columns(2)
+
+    with col_src:
+        st.markdown("**Sources**")
+        luma_en   = st.checkbox("📅 Luma Events",    value=True)
+        luma_days = st.slider("Look-ahead (days)", 7, 60, 21, key="d_luma") if luma_en else 21
+        sp_en     = st.checkbox("🎙️ Spotify Podcast", value=True)
+        sp_days   = st.slider("Look-back (days)", 1, 30, 7, key="d_spot") if sp_en else 7
+        wf_en     = st.checkbox("💼 Webflow Jobs",   value=True)
+
+    with col_sched:
+        st.markdown("**Schedule & Model**")
+        preset = st.selectbox("Repeat interval", list(INTERVAL_PRESETS.keys()) + ["Custom"])
+        if preset == "Custom":
+            interval = st.number_input("Seconds (min 60)", min_value=60, value=3600, step=60)
+        else:
+            interval = INTERVAL_PRESETS[preset]
+        st.caption(f"Repeats every **{fmt_interval(int(interval))}**")
+        model    = st.selectbox("Claude model", AVAILABLE_MODELS)
+        run_now  = st.checkbox("Run immediately on create", value=True)
 
     st.divider()
-    st.header("Sources")
-    luma_enabled    = st.checkbox("📅 Luma Events", value=True)
-    luma_days       = st.slider("Look-ahead (days)", 7, 60, 21) if luma_enabled else 21
-    spotify_enabled = st.checkbox("🎙️ Spotify Podcast", value=True)
-    spotify_days    = st.slider("Look-back (days)", 1, 30, 7) if spotify_enabled else 7
-    webflow_enabled = st.checkbox("💼 Webflow Jobs", value=True)
+    st.markdown("**Files**")
+    tmpl      = st.file_uploader("Newsletter template", type=["docx", "txt", "md"])
+    ctx_files = st.file_uploader("Context docs", type=["docx", "txt", "md"], accept_multiple_files=True)
 
-    st.divider()
-    st.header("Template & Context")
-    template_file  = st.file_uploader("Newsletter template", type=["docx", "txt", "md"])
-    context_files  = st.file_uploader("Additional context docs", type=["docx", "txt", "md"], accept_multiple_files=True)
+    st.write("")
+    if st.button("Create Task", type="primary", use_container_width=True):
+        if not name.strip():
+            st.error("Task name is required.")
+            return
 
+        template  = {"name": tmpl.name,  "bytes": tmpl.read()}  if tmpl       else None
+        docs      = [{"name": f.name,    "bytes": f.read()}      for f in (ctx_files or [])]
 
-# ── Resolve keys ──────────────────────────────────────────────────────────────
-anthropic_key      = _env_or_session("ANTHROPIC_API_KEY",      "cfg_anthropic_key",      sb_anthropic)
-luma_key           = _env_or_session("LUMA_API_KEY",           "cfg_luma_key",           sb_luma)
-spotify_id         = _env_or_session("SPOTIFY_CLIENT_ID",      "cfg_spotify_id",         sb_spotify_id)
-spotify_secret     = _env_or_session("SPOTIFY_CLIENT_SECRET",  "cfg_spotify_secret",     sb_spotify_secret)
-webflow_key        = _env_or_session("WEBFLOW_API_KEY",        "cfg_webflow_key",        sb_webflow)
-webflow_collection = _env_or_session("WEBFLOW_COLLECTION_ID",  "cfg_webflow_collection", sb_webflow_collection)
-webflow_domain     = _env_or_session("WEBFLOW_SITE_DOMAIN",    "cfg_webflow_domain",     sb_webflow_domain)
+        task = new_task(
+            name=name.strip(),
+            instructions=instructions,
+            interval=int(interval),
+            model=model,
+            luma_enabled=luma_en,
+            luma_days=luma_days,
+            spotify_enabled=sp_en,
+            spotify_days=sp_days,
+            webflow_enabled=wf_en,
+            template=template,
+            context_docs=docs,
+        )
+
+        if run_now:
+            submit_task(task, api_config)
+            task["status"] = "running"
+
+        schedule_next(task)
+        st.session_state["tasks"].append(task)
+        st.rerun()
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("CoSN Agent Dashboard")
-st.caption("Newsletter Automation · " + {
-    "idle": "⬜ Ready",
-    "fetching": "🔄 Fetching data…",
-    "generating": "🔄 Generating…",
-    "done": "✅ Done",
-    "error": "❌ Error",
-}.get(st.session_state["run_status"], "⬜ Ready"))
+col_title, col_btn = st.columns([4, 1])
+with col_title:
+    st.title("⚡ CoSN Agent Orchestration")
+with col_btn:
+    st.write("")
+    if st.button("＋ New Task", type="primary", use_container_width=True):
+        create_task_dialog()
+
+# Scheduler fragment — auto-polls every 15s
+scheduler_fragment()
 
 st.divider()
 
-# ── Source status ─────────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
-ss = st.session_state["source_status"]
-status_icon = {"ok": "✅", "error": "❌", "idle": "○", "disabled": "—"}
+# ── Task table ────────────────────────────────────────────────────────────────
+tasks = st.session_state["tasks"]
 
-with col1:
-    s = ss["luma"] if luma_enabled else "disabled"
-    st.metric("📅 Luma Events", f"{status_icon.get(s, '○')} {s.title()}")
-with col2:
-    s = ss["spotify"] if spotify_enabled else "disabled"
-    st.metric("🎙️ Spotify", f"{status_icon.get(s, '○')} {s.title()}")
-with col3:
-    s = ss["webflow"] if webflow_enabled else "disabled"
-    st.metric("💼 Webflow Jobs", f"{status_icon.get(s, '○')} {s.title()}")
-
-st.divider()
-
-# ── Uploaded files ────────────────────────────────────────────────────────────
-all_uploads = ([template_file] if template_file else []) + (context_files or [])
-if all_uploads:
-    st.caption("Uploaded: " + "  ·  ".join(f"📄 {f.name}" for f in all_uploads))
-    with st.expander("Preview uploaded files"):
-        for fname, text in extract_all(all_uploads).items():
-            st.markdown(f"**{fname}**")
-            st.code(text[:1500] + ("…" if len(text) > 1500 else ""), language=None)
-
-# ── Run bar ───────────────────────────────────────────────────────────────────
-run_col, step_col = st.columns([1, 2])
-with run_col:
-    run_clicked = st.button("▶ Run Automation", type="primary", use_container_width=True)
-with step_col:
-    render_step_indicator(st.session_state["run_status"])
-
-# ── Validation ────────────────────────────────────────────────────────────────
-if run_clicked:
-    errors = []
-    if not anthropic_key:
-        errors.append("Anthropic API key is required.")
-    if luma_enabled and not luma_key:
-        errors.append("Luma API key is required (or disable Luma).")
-    if spotify_enabled and (not spotify_id or not spotify_secret):
-        errors.append("Spotify Client ID + Secret required (or disable Spotify).")
-    if webflow_enabled and not webflow_key:
-        errors.append("Webflow API key is required (or disable Webflow).")
-    for e in errors:
-        st.error(e)
-    if errors:
-        run_clicked = False
-
-# ── Run automation ────────────────────────────────────────────────────────────
-if run_clicked:
-    st.session_state.update({
-        "run_status": "fetching",
-        "run_error": "",
-        "last_output": "",
-        "last_docx": None,
-        "source_status": {"luma": "idle", "spotify": "idle", "webflow": "idle"},
-        "normalized": {"luma": "", "spotify": "", "webflow": ""},
-    })
-
-    # 1. Fetch
-    async def _fetch_all():
-        tasks = {}
-        if luma_enabled:    tasks["luma"]    = fetch_luma_events(luma_key, luma_days)
-        if spotify_enabled: tasks["spotify"] = fetch_spotify_episodes(spotify_id, spotify_secret, spotify_days)
-        if webflow_enabled: tasks["webflow"] = fetch_webflow_jobs(webflow_key, webflow_collection, webflow_domain)
-        if not tasks:
-            return {}
-        gathered = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        return dict(zip(tasks.keys(), gathered))
-
-    with st.spinner("Fetching data from sources…"):
-        try:
-            raw = _run_async(_fetch_all())
-        except Exception as exc:
-            st.session_state["run_status"] = "error"
-            st.session_state["run_error"] = str(exc)
-            raw = {}
-
-    # 2. Normalize
-    luma_text = spotify_text = webflow_text = ""
-
-    if "luma" in raw:
-        r = raw["luma"]
-        if isinstance(r, Exception):
-            st.session_state["source_status"]["luma"] = "error"
-            st.warning(f"Luma: {r}")
-        else:
-            st.session_state["source_status"]["luma"] = "ok"
-            luma_text = normalize_luma(r, luma_days)
-            st.session_state["normalized"]["luma"] = luma_text
-
-    if "spotify" in raw:
-        r = raw["spotify"]
-        if isinstance(r, Exception):
-            st.session_state["source_status"]["spotify"] = "error"
-            st.warning(f"Spotify: {r}")
-        else:
-            st.session_state["source_status"]["spotify"] = "ok"
-            spotify_text = normalize_spotify(r, spotify_days)
-            st.session_state["normalized"]["spotify"] = spotify_text
-
-    if "webflow" in raw:
-        r = raw["webflow"]
-        if isinstance(r, Exception):
-            st.session_state["source_status"]["webflow"] = "error"
-            st.warning(f"Webflow: {r}")
-        else:
-            jobs, domain = r
-            st.session_state["source_status"]["webflow"] = "ok"
-            webflow_text = normalize_webflow_jobs(jobs, domain)
-            st.session_state["normalized"]["webflow"] = webflow_text
-
-    # 3. Extract files
-    template_text = ""
-    uploaded_docs = {}
-    if template_file:
-        try:
-            template_text = extract_text(template_file)
-        except Exception as exc:
-            st.warning(f"Could not read template: {exc}")
-    if context_files:
-        try:
-            uploaded_docs = extract_all(context_files)
-        except Exception as exc:
-            st.warning(f"Could not read context files: {exc}")
-
-    # 4. Assemble context
-    full_context = assemble_context(
-        luma_text=luma_text,
-        spotify_text=spotify_text,
-        webflow_text=webflow_text,
-        uploaded_docs=uploaded_docs or None,
-        template_text=template_text,
-    )
-
-    # 5. Stream generation
-    st.session_state["run_status"] = "generating"
-    st.divider()
-    st.subheader("Generated Newsletter Draft")
-    placeholder = st.empty()
-    full_text = ""
-
-    try:
-        for chunk in stream_generation(anthropic_key, full_context, model=selected_model):
-            full_text += chunk
-            placeholder.markdown(full_text + "▌")
-        placeholder.markdown(full_text)
-        st.session_state["last_output"] = full_text
-        st.session_state["last_model"] = selected_model
-        st.session_state["run_status"] = "done"
-    except Exception as exc:
-        st.session_state["run_status"] = "error"
-        st.session_state["run_error"] = str(exc)
-        st.error(f"Generation failed: {exc}")
-        full_text = ""
-
-    # 6. Generate docx
-    if full_text:
-        try:
-            st.session_state["last_docx"] = generate_docx(full_text, selected_model)
-        except Exception as exc:
-            st.warning(f"Could not generate .docx: {exc}")
-
-    # 7. Record history
-    st.session_state["run_history"].append({
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "model": selected_model,
-        "status": st.session_state["run_status"],
-        "sources": [s for s, en in [("Luma", luma_enabled), ("Spotify", spotify_enabled), ("Webflow Jobs", webflow_enabled)] if en],
-        "error": st.session_state.get("run_error", ""),
-        "output": full_text,
-    })
-
-    st.rerun()
-
-# ── Output ────────────────────────────────────────────────────────────────────
-if st.session_state["last_output"]:
-    st.divider()
-    st.subheader("Generated Newsletter Draft")
-
-    with st.expander("View output", expanded=True):
-        st.markdown(st.session_state["last_output"])
-
-    with st.expander("View raw source data"):
-        norm = st.session_state["normalized"]
-        for label, key in [("Luma Events", "luma"), ("Spotify", "spotify"), ("Webflow Jobs", "webflow")]:
-            if norm[key]:
-                st.markdown(f"**{label}**")
-                st.code(norm[key], language=None)
-
-    st.divider()
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    dl_col, reset_col = st.columns([2, 1])
-    with dl_col:
-        if st.session_state["last_docx"]:
-            st.download_button(
-                label="⬇️ Download Newsletter (.docx)",
-                data=st.session_state["last_docx"],
-                file_name=f"CoSN_Newsletter_{date_str}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary",
-            )
-    with reset_col:
-        if st.button("Reset", type="secondary"):
-            for key in ["run_status", "last_output", "last_docx", "run_error", "normalized", "source_status"]:
-                st.session_state[key] = _DEFAULTS.get(key, "")
-            st.rerun()
-
-elif st.session_state["run_status"] == "error":
-    st.error(f"Run failed: {st.session_state['run_error']}")
-    if st.button("Reset"):
-        st.session_state["run_status"] = "idle"
-        st.session_state["run_error"] = ""
-        st.rerun()
-
-else:
-    st.divider()
+if not tasks:
     st.info(
-        "**Ready to generate.**\n\n"
-        "1. API keys are loaded from `.env` automatically\n"
-        "2. Toggle sources and adjust date windows in the sidebar\n"
-        "3. Optionally upload a newsletter template\n"
-        "4. Click **▶ Run Automation**\n"
-        "5. Download the finished `.docx`",
-        icon="🚀",
+        "No tasks yet. Click **＋ New Task** to create your first automation.\n\n"
+        "Each task pulls live data from your selected sources, generates a newsletter "
+        "draft via Claude, and repeats on your chosen schedule — all within this session.",
+        icon="⚡",
     )
+else:
+    st.subheader(f"Tasks ({len(tasks)})")
+
+    # Column headers
+    h = st.columns([2.5, 1.8, 1, 1.5, 1.5, 1.2, 1.8])
+    for col, label in zip(h, ["Task", "Sources", "Every", "Last run", "Next run", "Status", "Actions"]):
+        col.markdown(f"**{label}**")
+    st.divider()
+
+    for task in tasks:
+        src_icons = "  ".join([
+            icon for flag, icon in [
+                (task["sources"]["luma"]["enabled"],    "📅"),
+                (task["sources"]["spotify"]["enabled"], "🎙️"),
+                (task["sources"]["webflow"]["enabled"], "💼"),
+            ] if flag
+        ]) or "—"
+
+        status_display = {
+            "idle":    "○ Idle",
+            "running": "🔄 Running",
+            "done":    "✅ Done",
+            "error":   "❌ Error",
+        }.get(task["status"], "—")
+
+        next_run_display = fmt_dt(task.get("next_run")) if task["enabled"] else "Paused"
+
+        row = st.columns([2.5, 1.8, 1, 1.5, 1.5, 1.2, 1.8])
+        row[0].markdown(f"**{task['name']}**")
+        row[1].write(src_icons)
+        row[2].write(fmt_interval(task["interval"]))
+        row[3].write(fmt_dt(task.get("last_run")))
+        row[4].write(next_run_display)
+        row[5].write(status_display)
+
+        with row[6]:
+            a1, a2, a3 = st.columns(3)
+
+            if a1.button("▶", key=f"run_{task['id']}", help="Run now",
+                         disabled=(task["status"] == "running")):
+                submit_task(task, api_config)
+                task["status"] = "running"
+                schedule_next(task)
+                st.rerun()
+
+            pause_label = "⏸" if task["enabled"] else "▷"
+            pause_help  = "Pause" if task["enabled"] else "Resume"
+            if a2.button(pause_label, key=f"pause_{task['id']}", help=pause_help):
+                task["enabled"] = not task["enabled"]
+                if task["enabled"]:
+                    schedule_next(task)
+                st.rerun()
+
+            if a3.button("🗑", key=f"del_{task['id']}", help="Delete task"):
+                st.session_state["tasks"] = [t for t in tasks if t["id"] != task["id"]]
+                st.rerun()
+
+        if task["status"] == "error" and task["last_error"]:
+            st.error(f"↳ **{task['name']}**: {task['last_error']}")
+
+    st.divider()
+
+    # ── Outputs ───────────────────────────────────────────────────────────────
+    tasks_with_output = [t for t in tasks if t.get("outputs")]
+    if tasks_with_output:
+        st.subheader("Outputs")
+        for task in tasks_with_output:
+            latest = task["outputs"][0]
+            with st.expander(
+                f"**{task['name']}** — {len(task['outputs'])} run(s) · latest {latest['timestamp']}",
+                expanded=True,
+            ):
+                tab_labels = [f"Run {i+1} · {o['timestamp']}" for i, o in enumerate(task["outputs"])]
+                tabs = st.tabs(tab_labels)
+
+                for tab, output in zip(tabs, task["outputs"]):
+                    with tab:
+                        if output.get("sources_used"):
+                            st.caption("Sources: " + " · ".join(output["sources_used"]))
+                        st.markdown(output["text"])
+                        if output.get("docx_bytes"):
+                            date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                            st.download_button(
+                                label="⬇️ Download .docx",
+                                data=output["docx_bytes"],
+                                file_name=f"CoSN_{task['name'].replace(' ', '_')}_{date_str}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"dl_{task['id']}_{output['timestamp']}",
+                            )
