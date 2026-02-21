@@ -15,14 +15,14 @@ def _add_styled_paragraph(doc: Document, text: str) -> None:
 
 def generate_docx(content: str, model: str = "claude-sonnet-4-6") -> bytes:
     """
-    Convert the Claude-generated newsletter text into a formatted .docx.
+    Convert the Claude-generated content into a formatted .docx.
     Returns raw bytes suitable for st.download_button.
     """
     doc = Document()
 
     # ── Document title ──────────────────────────────────────────────────────
     today = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    title_para = doc.add_heading(f"CoSN Newsletter Draft — Week of {today}", level=0)
+    title_para = doc.add_heading(f"CoSN Content Draft — Week of {today}", level=0)
     title_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     for run in title_para.runs:
         run.font.color.rgb = RGBColor(0x0A, 0x25, 0x40)

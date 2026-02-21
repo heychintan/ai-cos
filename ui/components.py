@@ -13,7 +13,7 @@ def render_header(run_status: str = "idle") -> None:
     col1, col2 = st.columns([3, 1])
     with col1:
         st.title("CoSN Agent Dashboard")
-        st.caption("Newsletter Automation")
+        st.caption("Content Automation")
     with col2:
         st.write("")
         st.write(status_map.get(run_status, "⬜ Idle"))

@@ -75,7 +75,7 @@ st.session_state["api_config"] = api_config
 # ── New Task dialog ───────────────────────────────────────────────────────────
 @st.dialog("New Task", width="large")
 def create_task_dialog() -> None:
-    name         = st.text_input("Task name *", placeholder="Weekly Newsletter")
+    name         = st.text_input("Task name *", placeholder="Weekly LinkedIn Post, Slack Announcement…")
     instructions = st.text_area(
         "Instructions",
         placeholder="e.g. Focus on SF and NYC events. Lead with the podcast episode. Keep job listings concise.",
@@ -106,7 +106,7 @@ def create_task_dialog() -> None:
 
     st.divider()
     st.markdown("**Files**")
-    tmpl      = st.file_uploader("Newsletter template", type=["docx", "txt", "md"])
+    tmpl      = st.file_uploader("Content template", type=["docx", "txt", "md"])
     ctx_files = st.file_uploader("Context docs", type=["docx", "txt", "md"], accept_multiple_files=True)
 
     st.write("")
@@ -161,7 +161,7 @@ tasks = st.session_state["tasks"]
 if not tasks:
     st.info(
         "No tasks yet. Click **＋ New Task** to create your first automation.\n\n"
-        "Each task pulls live data from your selected sources, generates a newsletter "
+        "Each task pulls live data from your selected sources, generates content "
         "draft via Claude, and repeats on your chosen schedule — all within this session.",
         icon="⚡",
     )

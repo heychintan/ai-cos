@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 TASK_INSTRUCTION = """\
 Using the data above and following the template exactly, generate the \
-newsletter draft. Output should be ready to copy into the final document \
+content draft. Output should be ready to copy into the final document \
 with no further editing needed.\
 """
 
@@ -52,7 +52,7 @@ def assemble_context(
     if template_text.strip():
         parts.append(template_text.strip())
     else:
-        parts.append("(No template provided — use a standard newsletter format.)")
+        parts.append("(No template provided — use a standard content format.)")
 
     # Task instruction
     parts.append("\n=== YOUR TASK ===")
