@@ -55,18 +55,20 @@ with st.sidebar:
     sb_luma               = st.text_input("Luma API Key",         type="password")
     sb_spotify_id         = st.text_input("Spotify Client ID",    type="password")
     sb_spotify_secret     = st.text_input("Spotify Client Secret",type="password")
-    sb_webflow            = st.text_input("Webflow API Key",      type="password")
-    sb_webflow_collection = st.text_input("Webflow Collection ID")
-    sb_webflow_domain     = st.text_input("Webflow Site Domain",  placeholder="e.g. cosn.community")
+    sb_webflow                 = st.text_input("Webflow API Key",            type="password")
+    sb_webflow_jobs_collection = st.text_input("Webflow Jobs Collection ID")
+    sb_webflow_blogs_collection= st.text_input("Webflow Blogs Collection ID")
+    sb_webflow_domain          = st.text_input("Webflow Site Domain",        placeholder="e.g. cosn.community")
 
 api_config = {
-    "anthropic_key":      _env("ANTHROPIC_API_KEY",      "cfg_anthropic_key",      sb_anthropic),
-    "luma_key":           _env("LUMA_API_KEY",           "cfg_luma_key",           sb_luma),
-    "spotify_id":         _env("SPOTIFY_CLIENT_ID",      "cfg_spotify_id",         sb_spotify_id),
-    "spotify_secret":     _env("SPOTIFY_CLIENT_SECRET",  "cfg_spotify_secret",     sb_spotify_secret),
-    "webflow_key":        _env("WEBFLOW_API_KEY",        "cfg_webflow_key",        sb_webflow),
-    "webflow_collection": _env("WEBFLOW_COLLECTION_ID",  "cfg_webflow_collection", sb_webflow_collection),
-    "webflow_domain":     _env("WEBFLOW_SITE_DOMAIN",    "cfg_webflow_domain",     sb_webflow_domain),
+    "anthropic_key":           _env("ANTHROPIC_API_KEY",            "cfg_anthropic_key",            sb_anthropic),
+    "luma_key":                _env("LUMA_API_KEY",                 "cfg_luma_key",                 sb_luma),
+    "spotify_id":              _env("SPOTIFY_CLIENT_ID",            "cfg_spotify_id",               sb_spotify_id),
+    "spotify_secret":          _env("SPOTIFY_CLIENT_SECRET",        "cfg_spotify_secret",           sb_spotify_secret),
+    "webflow_key":             _env("WEBFLOW_API_KEY",              "cfg_webflow_key",              sb_webflow),
+    "webflow_jobs_collection": _env("WEBFLOW_JOBS_COLLECTION_ID",   "cfg_webflow_jobs_collection",  sb_webflow_jobs_collection),
+    "webflow_blogs_collection":_env("WEBFLOW_BLOGS_COLLECTION_ID",  "cfg_webflow_blogs_collection", sb_webflow_blogs_collection),
+    "webflow_domain":          _env("WEBFLOW_SITE_DOMAIN",          "cfg_webflow_domain",           sb_webflow_domain),
 }
 # Always keep api_config fresh for the scheduler fragment
 st.session_state["api_config"] = api_config
@@ -87,11 +89,12 @@ def create_task_dialog() -> None:
 
     with col_src:
         st.markdown("**Sources**")
-        luma_en   = st.checkbox("📅 Luma Events",    value=True)
+        luma_en   = st.checkbox("📅 Luma Events",       value=True)
         luma_days = st.slider("Look-ahead (days)", 7, 60, 21, key="d_luma") if luma_en else 21
-        sp_en     = st.checkbox("🎙️ Spotify Podcast", value=True)
+        sp_en     = st.checkbox("🎙️ Spotify Podcast",  value=True)
         sp_days   = st.slider("Look-back (days)", 1, 30, 7, key="d_spot") if sp_en else 7
-        wf_en     = st.checkbox("💼 Webflow Jobs",   value=True)
+        wf_en     = st.checkbox("💼 Webflow Jobs",      value=True)
+        wf_blog_en= st.checkbox("📰 Webflow Blogs",     value=False)
 
     with col_sched:
         st.markdown("**Schedule & Model**")
@@ -128,6 +131,7 @@ def create_task_dialog() -> None:
             spotify_enabled=sp_en,
             spotify_days=sp_days,
             webflow_enabled=wf_en,
+            webflow_blogs_enabled=wf_blog_en,
             template=template,
             context_docs=docs,
         )
@@ -177,9 +181,10 @@ else:
     for task in tasks:
         src_icons = "  ".join([
             icon for flag, icon in [
-                (task["sources"]["luma"]["enabled"],    "📅"),
-                (task["sources"]["spotify"]["enabled"], "🎙️"),
-                (task["sources"]["webflow"]["enabled"], "💼"),
+                (task["sources"]["luma"]["enabled"],                          "📅"),
+                (task["sources"]["spotify"]["enabled"],                       "🎙️"),
+                (task["sources"]["webflow"]["enabled"],                       "💼"),
+                (task["sources"].get("webflow_blogs", {}).get("enabled"),     "📰"),
             ] if flag
         ]) or "—"
 

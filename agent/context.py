@@ -14,6 +14,7 @@ def assemble_context(
     luma_text: str = "",
     spotify_text: str = "",
     webflow_text: str = "",
+    blogs_text: str = "",
     uploaded_docs: Optional[Dict[str, str]] = None,
     template_text: str = "",
 ) -> str:
@@ -30,6 +31,8 @@ def assemble_context(
         data_sections.append(spotify_text.strip())
     if webflow_text.strip():
         data_sections.append(webflow_text.strip())
+    if blogs_text.strip():
+        data_sections.append(blogs_text.strip())
 
     if data_sections:
         parts.append("=== DATA CONTEXT ===")

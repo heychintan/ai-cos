@@ -47,6 +47,7 @@ def new_task(
     spotify_enabled: bool,
     spotify_days: int,
     webflow_enabled: bool,
+    webflow_blogs_enabled: bool,
     template: Optional[Dict[str, Any]],
     context_docs: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -57,9 +58,10 @@ def new_task(
         "interval":     max(interval, MIN_INTERVAL),
         "model":        model,
         "sources": {
-            "luma":    {"enabled": luma_enabled,    "days": luma_days},
-            "spotify": {"enabled": spotify_enabled, "days": spotify_days},
-            "webflow": {"enabled": webflow_enabled},
+            "luma":          {"enabled": luma_enabled,         "days": luma_days},
+            "spotify":       {"enabled": spotify_enabled,      "days": spotify_days},
+            "webflow":       {"enabled": webflow_enabled},
+            "webflow_blogs": {"enabled": webflow_blogs_enabled},
         },
         "template":     template,      # {"name": str, "bytes": bytes} | None
         "context_docs": context_docs,  # [{"name": str, "bytes": bytes}]

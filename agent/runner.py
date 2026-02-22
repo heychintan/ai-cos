@@ -37,7 +37,10 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
     """Full fetch → normalize → generate → docx pipeline. Runs synchronously."""
     from agent.sources.luma import fetch_luma_events, normalize_luma
     from agent.sources.spotify import fetch_spotify_episodes, normalize_spotify
-    from agent.sources.webflow import fetch_webflow_jobs, normalize_webflow_jobs
+    from agent.sources.webflow import (
+        fetch_webflow_jobs, normalize_webflow_jobs,
+        fetch_webflow_blogs, normalize_webflow_blogs,
+    )
     from agent.context import assemble_context
     from agent.claude import generate_text
     from agent.output import generate_docx
@@ -56,7 +59,13 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
         if src["webflow"]["enabled"] and api_config.get("webflow_key"):
             coros["webflow"] = fetch_webflow_jobs(
                 api_config["webflow_key"],
-                api_config.get("webflow_collection", ""),
+                api_config.get("webflow_jobs_collection", ""),
+                api_config.get("webflow_domain", ""),
+            )
+        if src.get("webflow_blogs", {}).get("enabled") and api_config.get("webflow_key") and api_config.get("webflow_blogs_collection"):
+            coros["webflow_blogs"] = fetch_webflow_blogs(
+                api_config["webflow_key"],
+                api_config["webflow_blogs_collection"],
                 api_config.get("webflow_domain", ""),
             )
         if not coros:
@@ -71,7 +80,7 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
         loop.close()
 
     # 2. Normalize
-    luma_text = spotify_text = webflow_text = ""
+    luma_text = spotify_text = webflow_text = blogs_text = ""
     sources_used: list = []
 
     if "luma" in raw:
@@ -93,11 +102,20 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
     if "webflow" in raw:
         r = raw["webflow"]
         if isinstance(r, Exception):
-            sources_used.append(f"Webflow (error: {r})")
+            sources_used.append(f"Webflow Jobs (error: {r})")
         else:
             jobs, domain = r
             webflow_text = normalize_webflow_jobs(jobs, domain)
-            sources_used.append(f"Webflow ({len(jobs)} jobs)")
+            sources_used.append(f"Webflow Jobs ({len(jobs)} jobs)")
+
+    if "webflow_blogs" in raw:
+        r = raw["webflow_blogs"]
+        if isinstance(r, Exception):
+            sources_used.append(f"Webflow Blogs (error: {r})")
+        else:
+            posts, domain = r
+            blogs_text = normalize_webflow_blogs(posts, domain)
+            sources_used.append(f"Webflow Blogs ({len(posts)} posts)")
 
     # 3. Extract uploaded files
     template_text = ""
@@ -120,6 +138,7 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
         luma_text=luma_text,
         spotify_text=spotify_text,
         webflow_text=webflow_text,
+        blogs_text=blogs_text,
         uploaded_docs=uploaded_docs or None,
         template_text=template_text,
     )

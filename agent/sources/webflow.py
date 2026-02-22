@@ -1,4 +1,4 @@
-"""Webflow CMS API — fetch and normalize job postings."""
+"""Webflow CMS API — fetch and normalize job postings and blog posts."""
 import httpx
 
 WEBFLOW_BASE = "https://api.webflow.com/v2"
@@ -90,6 +90,83 @@ async def fetch_webflow_jobs(
         if not item.get("isArchived", False) and not item.get("isDraft", False)
     ]
     return published[:10], site_domain
+
+
+async def fetch_webflow_blogs(api_key: str, collection_id: str, site_domain: str = "") -> tuple[list[dict], str]:
+    """
+    Fetch published blog posts from a Webflow CMS collection.
+    Returns (items, site_domain). No auto-discovery — collection_id is required.
+    """
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{WEBFLOW_BASE}/collections/{collection_id}/items",
+            headers=_headers(api_key),
+            params={"limit": 100},
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
+
+    published = [
+        item for item in items
+        if not item.get("isArchived", False) and not item.get("isDraft", False)
+    ]
+    return published[:10], site_domain
+
+
+def normalize_webflow_blogs(posts: list[dict], site_domain: str = "") -> str:
+    header = "RECENT BLOG POSTS"
+    if not posts:
+        return f"{header}\nNo blog posts found.\n"
+
+    lines = [header]
+    for i, post in enumerate(posts, 1):
+        fd = post.get("fieldData") or {}
+
+        title = (
+            fd.get("name")
+            or fd.get("title")
+            or fd.get("post-title")
+            or post.get("name", "Untitled Post")
+        )
+
+        slug = fd.get("slug") or post.get("slug", "")
+
+        publish_date = (
+            fd.get("publish-date")
+            or fd.get("date")
+            or fd.get("published-on")
+            or ""
+        )
+        if publish_date:
+            # Trim to date portion if ISO datetime
+            publish_date = str(publish_date)[:10]
+
+        author = fd.get("author") or fd.get("writer") or ""
+
+        excerpt = str(
+            fd.get("excerpt")
+            or fd.get("summary")
+            or fd.get("description")
+            or fd.get("short-description")
+            or ""
+        )
+
+        meta_parts = [p for p in [publish_date, author] if p]
+        meta = " · ".join(meta_parts)
+
+        excerpt_preview = excerpt[:200].strip()
+        if len(excerpt) > 200:
+            excerpt_preview += "…"
+
+        lines.append(f"{i}. {title}" + (f" — {meta}" if meta else ""))
+        if excerpt_preview:
+            lines.append(f"   {excerpt_preview}")
+        if site_domain and slug:
+            domain = site_domain.rstrip("/")
+            lines.append(f"   URL: https://{domain}/blog/{slug}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def normalize_webflow_jobs(jobs: list[dict], site_domain: str = "") -> str:
