@@ -198,7 +198,9 @@ else:
         next_run_display = fmt_dt(task.get("next_run")) if task["enabled"] else "Paused"
 
         row = st.columns([2.5, 1.8, 1, 1.5, 1.5, 1.2, 1.8])
-        row[0].markdown(f"**{task['name']}**")
+        if row[0].button(f"**{task['name']}**", key=f"detail_{task['id']}", use_container_width=True):
+            st.session_state["detail_task_id"] = task["id"]
+            st.switch_page("pages/4_task.py")
         row[1].write(src_icons)
         row[2].write(fmt_interval(task["interval"]))
         row[3].write(fmt_dt(task.get("last_run")))
