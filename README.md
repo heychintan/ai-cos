@@ -1,6 +1,8 @@
 # CoSN Agent Dashboard
 
-Internal content automation tool for the [Chief of Staff Network](https://chiefofstaff.network). Pulls live data from Luma, Spotify, and Webflow CMS, then uses Claude to generate a formatted weekly newsletter draft — downloaded as a `.docx` file.
+Internal content automation tool for the [Chief of Staff Network](https://chiefofstaff.network). Pulls live data from Luma, Spotify, and Webflow, then uses Claude to generate content drafts on demand or on a repeating schedule — downloadable as `.docx` files.
+
+**Live:** [ai-cos.streamlit.app](https://ai-cos.streamlit.app)
 
 ---
 
@@ -12,10 +14,11 @@ Spotify ───┼── Normalizer ── Context Assembler ── Claude API
 Webflow ───┘
 ```
 
-1. Fetches upcoming events (Luma), recent podcast episodes (Spotify), and recent blog posts (Webflow)
-2. Normalizes each source into clean plain text
-3. Assembles context + template and calls `claude-sonnet-4-6`
-4. Returns a formatted `.docx` file that auto-downloads in the browser
+1. Create a task — choose sources, schedule interval, Claude model, and optional template/context files
+2. Each source is fetched and normalized into clean plain text
+3. Context is assembled and sent to `claude-sonnet-4-6`
+4. Output appears in the dashboard and is downloadable as a `.docx` file
+5. Tasks repeat automatically on your chosen interval for the duration of the session
 
 ---
 
@@ -23,11 +26,10 @@ Webflow ───┘
 
 | Layer | Tech |
 |---|---|
-| Frontend | Next.js 15 + Tailwind |
-| Backend | Python FastAPI + Uvicorn |
+| App | Python + Streamlit |
 | AI | Anthropic Claude (`claude-sonnet-4-6`) |
 | Output | `python-docx` |
-| Hosting | Vercel (frontend) + Railway (backend) |
+| Hosting | Streamlit Cloud |
 
 ---
 
@@ -42,23 +44,19 @@ cp .env.example .env
 # Fill in your API keys in .env
 ```
 
-### 2. Backend
+### 2. Install dependencies
 
 ```bash
-cd backend
 pip install -r requirements.txt
-python3 -m uvicorn main:app --reload --port 8000
 ```
 
-### 3. Frontend
+### 3. Run
 
 ```bash
-cd frontend
-npm install
-npm run dev
+streamlit run app.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open [http://localhost:8501](http://localhost:8501)
 
 ---
 
@@ -72,15 +70,17 @@ Open [http://localhost:3000](http://localhost:3000)
 | `SPOTIFY_CLIENT_SECRET` | Spotify app client secret |
 | `SPOTIFY_SHOW_ID` | Podcast show ID from Spotify URL |
 | `WEBFLOW_API_KEY` | Webflow API key |
-| `WEBFLOW_COLLECTION_ID` | Blog collection ID in Webflow |
-| `WEBFLOW_SITE_DOMAIN` | e.g. `chiefofstaff.webflow.io` |
+| `WEBFLOW_JOBS_COLLECTION_ID` | Jobs collection ID in Webflow |
+| `WEBFLOW_BLOGS_COLLECTION_ID` | Blog collection ID in Webflow |
+| `WEBFLOW_SITE_DOMAIN` | e.g. `cosn.community` |
+
+For Streamlit Cloud, add these under **App settings → Secrets** in TOML format.
 
 ---
 
 ## Deployment
 
-- **Frontend** — Vercel. Set `NEXT_PUBLIC_API_URL` to your Railway backend URL.
-- **Backend** — Railway. Add all env vars from the table above.
+Deployed on [Streamlit Cloud](https://streamlit.io/cloud). Connect your GitHub repo and add the environment variables above as secrets.
 
 ---
 
@@ -88,29 +88,23 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ```
 cosn-agent-dashboard/
-├── backend/
-│   ├── main.py                  # FastAPI routes
-│   ├── agent.py                 # Claude API call
-│   ├── fetchers/                # Luma, Spotify, Webflow API clients
-│   ├── normalizers/             # Per-source text normalizers + assembler
-│   ├── output/docx_writer.py   # .docx generation
-│   └── requirements.txt
-├── frontend/
-│   └── app/
-│       ├── page.tsx             # Automations page (Run Now)
-│       └── integrations/        # API connection tester
-└── .env.example
+├── app.py                        # Main dashboard (task orchestration)
+├── scheduler.py                  # In-session scheduling fragment
+├── requirements.txt
+├── agent/
+│   ├── claude.py                 # Claude API call + model list
+│   ├── context.py                # Context assembly
+│   ├── files.py                  # Template / context doc parsing
+│   ├── output.py                 # Output formatting
+│   ├── runner.py                 # Task execution
+│   ├── task.py                   # Task model + schedule helpers
+│   └── sources/                  # Luma, Spotify, Webflow fetchers + normalizers
+├── pages/
+│   ├── 1_config.py               # API key & source configuration
+│   ├── 2_history.py              # In-session run history
+│   ├── 3_calendar.py             # Content calendar (month grid)
+│   └── 4_task.py                 # Task detail & edit
+└── ui/
+    ├── styles.py                 # Global CSS injection
+    └── components.py             # Shared UI components
 ```
-
----
-
-## POC scope
-
-- [x] Single automation: Weekly Newsletter
-- [x] Three data sources: Luma, Spotify, Webflow
-- [x] On-demand trigger
-- [x] `.docx` auto-download
-- [ ] Scheduling (Phase 1)
-- [ ] Auth (Phase 1)
-- [ ] Run history (Phase 1)
-- [ ] LinkedIn / Slack push (Phase 2)
