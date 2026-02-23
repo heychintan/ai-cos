@@ -56,7 +56,23 @@ def _edit_dialog(t: dict) -> None:
         sp_days   = st.slider("Look-back (days)", 1, 30,
                               src.get("spotify", {}).get("days", 7), key="e_sp_days") if sp_en else src.get("spotify", {}).get("days", 7)
         wf_en     = st.checkbox("💼 Webflow Jobs",   value=src.get("webflow", {}).get("enabled", False),        key="e_wf_en")
+        if wf_en:
+            wf_days           = st.slider("Look-back (days)", 1, 30,
+                                          src.get("webflow", {}).get("days", 7), key="e_wf_days")
+            wf_featured_first = st.checkbox("Featured first?",
+                                            value=src.get("webflow", {}).get("featured_first", True), key="e_wf_feat")
+        else:
+            wf_days           = src.get("webflow", {}).get("days", 7)
+            wf_featured_first = src.get("webflow", {}).get("featured_first", True)
         wf_blog_en= st.checkbox("📰 Webflow Blogs",  value=src.get("webflow_blogs", {}).get("enabled", False),  key="e_wf_blog_en")
+        if wf_blog_en:
+            wf_blog_days           = st.slider("Look-back (days)", 1, 30,
+                                               src.get("webflow_blogs", {}).get("days", 7), key="e_wf_blog_days")
+            wf_blog_featured_first = st.checkbox("Featured first?",
+                                                 value=src.get("webflow_blogs", {}).get("featured_first", True), key="e_wf_blog_feat")
+        else:
+            wf_blog_days           = src.get("webflow_blogs", {}).get("days", 7)
+            wf_blog_featured_first = src.get("webflow_blogs", {}).get("featured_first", True)
 
     with col_sched:
         st.markdown("**Schedule & Model**")
@@ -99,8 +115,8 @@ def _edit_dialog(t: dict) -> None:
         t["model"]        = model
         t["sources"]["luma"]          = {"enabled": luma_en,    "days": luma_days}
         t["sources"]["spotify"]       = {"enabled": sp_en,      "days": sp_days}
-        t["sources"]["webflow"]       = {"enabled": wf_en}
-        t["sources"]["webflow_blogs"] = {"enabled": wf_blog_en}
+        t["sources"]["webflow"]       = {"enabled": wf_en,       "days": wf_days,      "featured_first": wf_featured_first}
+        t["sources"]["webflow_blogs"] = {"enabled": wf_blog_en,  "days": wf_blog_days, "featured_first": wf_blog_featured_first}
 
         # Re-schedule if interval changed and task is active
         if interval_changed and t.get("enabled"):
