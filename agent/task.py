@@ -47,7 +47,11 @@ def new_task(
     spotify_enabled: bool,
     spotify_days: int,
     webflow_enabled: bool,
+    webflow_jobs_days: int,
+    webflow_jobs_featured_first: bool,
     webflow_blogs_enabled: bool,
+    webflow_blogs_days: int,
+    webflow_blogs_featured_first: bool,
     template: Optional[Dict[str, Any]],
     context_docs: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -59,10 +63,18 @@ def new_task(
         "model":        model,
         "created_at":   datetime.now(timezone.utc).isoformat(),
         "sources": {
-            "luma":          {"enabled": luma_enabled,         "days": luma_days},
-            "spotify":       {"enabled": spotify_enabled,      "days": spotify_days},
-            "webflow":       {"enabled": webflow_enabled},
-            "webflow_blogs": {"enabled": webflow_blogs_enabled},
+            "luma":          {"enabled": luma_enabled,    "days": luma_days},
+            "spotify":       {"enabled": spotify_enabled, "days": spotify_days},
+            "webflow":       {
+                "enabled":        webflow_enabled,
+                "days":           webflow_jobs_days,
+                "featured_first": webflow_jobs_featured_first,
+            },
+            "webflow_blogs": {
+                "enabled":        webflow_blogs_enabled,
+                "days":           webflow_blogs_days,
+                "featured_first": webflow_blogs_featured_first,
+            },
         },
         "template":     template,      # {"name": str, "bytes": bytes} | None
         "context_docs": context_docs,  # [{"name": str, "bytes": bytes}]

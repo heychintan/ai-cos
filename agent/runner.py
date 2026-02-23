@@ -61,12 +61,16 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
                 api_config["webflow_key"],
                 api_config.get("webflow_jobs_collection", ""),
                 api_config.get("webflow_domain", ""),
+                src["webflow"].get("days", 7),
+                src["webflow"].get("featured_first", True),
             )
         if src.get("webflow_blogs", {}).get("enabled") and api_config.get("webflow_key") and api_config.get("webflow_blogs_collection"):
             coros["webflow_blogs"] = fetch_webflow_blogs(
                 api_config["webflow_key"],
                 api_config["webflow_blogs_collection"],
                 api_config.get("webflow_domain", ""),
+                src["webflow_blogs"].get("days", 7),
+                src["webflow_blogs"].get("featured_first", True),
             )
         if not coros:
             return {}
@@ -105,7 +109,11 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
             sources_used.append(f"Webflow Jobs (error: {r})")
         else:
             jobs, domain = r
-            webflow_text = normalize_webflow_jobs(jobs, domain)
+            webflow_text = normalize_webflow_jobs(
+                jobs, domain,
+                src["webflow"].get("days", 7),
+                src["webflow"].get("featured_first", True),
+            )
             sources_used.append(f"Webflow Jobs ({len(jobs)} jobs)")
 
     if "webflow_blogs" in raw:
@@ -114,7 +122,11 @@ def _run_pipeline(task: Dict[str, Any], api_config: Dict[str, str]) -> Dict[str,
             sources_used.append(f"Webflow Blogs (error: {r})")
         else:
             posts, domain = r
-            blogs_text = normalize_webflow_blogs(posts, domain)
+            blogs_text = normalize_webflow_blogs(
+                posts, domain,
+                src["webflow_blogs"].get("days", 7),
+                src["webflow_blogs"].get("featured_first", True),
+            )
             sources_used.append(f"Webflow Blogs ({len(posts)} posts)")
 
     # 3. Extract uploaded files

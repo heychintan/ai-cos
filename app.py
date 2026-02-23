@@ -94,7 +94,17 @@ def create_task_dialog() -> None:
         sp_en     = st.checkbox("🎙️ Spotify Podcast",  value=True)
         sp_days   = st.slider("Look-back (days)", 1, 30, 7, key="d_spot") if sp_en else 7
         wf_en     = st.checkbox("💼 Webflow Jobs",      value=True)
+        if wf_en:
+            wf_days           = st.slider("Look-back (days)", 1, 30, 7, key="d_wf")
+            wf_featured_first = st.checkbox("Featured first?", value=True, key="wf_feat")
+        else:
+            wf_days, wf_featured_first = 7, True
         wf_blog_en= st.checkbox("📰 Webflow Blogs",     value=False)
+        if wf_blog_en:
+            wf_blog_days           = st.slider("Look-back (days)", 1, 30, 7, key="d_wf_blog")
+            wf_blog_featured_first = st.checkbox("Featured first?", value=True, key="wf_blog_feat")
+        else:
+            wf_blog_days, wf_blog_featured_first = 7, True
 
     with col_sched:
         st.markdown("**Schedule & Model**")
@@ -131,7 +141,11 @@ def create_task_dialog() -> None:
             spotify_enabled=sp_en,
             spotify_days=sp_days,
             webflow_enabled=wf_en,
+            webflow_jobs_days=wf_days,
+            webflow_jobs_featured_first=wf_featured_first,
             webflow_blogs_enabled=wf_blog_en,
+            webflow_blogs_days=wf_blog_days,
+            webflow_blogs_featured_first=wf_blog_featured_first,
             template=template,
             context_docs=docs,
         )
