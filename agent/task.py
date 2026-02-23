@@ -57,6 +57,7 @@ def new_task(
         "instructions": instructions,
         "interval":     max(interval, MIN_INTERVAL),
         "model":        model,
+        "created_at":   datetime.now(timezone.utc).isoformat(),
         "sources": {
             "luma":          {"enabled": luma_enabled,         "days": luma_days},
             "spotify":       {"enabled": spotify_enabled,      "days": spotify_days},
